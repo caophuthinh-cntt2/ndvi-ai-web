@@ -6,7 +6,8 @@ import numpy as np
 import rasterio
 from PIL import Image
 from rasterio.enums import Resampling
-from rasterio.warp import reproject
+from rasterio.warp import transform_bounds
+from rasterio.windows import from_bounds
 from fastapi import APIRouter, HTTPException, Response
 from app.config import settings
 
@@ -23,35 +24,43 @@ def _tile_bounds(x: int, y: int, z: int):
     south = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * (y + 1) / n))))
     return west, south, east, north
 
+
+def _read_tile(path: Path, bounds):
+    west, south, east, north = bounds
+    with rasterio.open(path) as src:
+        if src.crs and src.crs.to_epsg() != 4326:
+            west, south, east, north = transform_bounds(
+                "EPSG:4326", src.crs, west, south, east, north
+            )
+        window = from_bounds(west, south, east, north, src.transform)
+        return src.read(
+            1,
+            window=window,
+            out_shape=(256, 256),
+            boundless=True,
+            masked=True,
+            resampling=Resampling.bilinear,
+        ).filled(np.nan).astype("float32")
+
 def _render_tile(dataset_id: str, z: int, x: int, y: int):
     filename = FILES.get(dataset_id)
     if filename is None:
         raise HTTPException(status_code=404, detail="Dataset không tồn tại")
-    west, south, east, north = _tile_bounds(x, y, z)
-    dst_transform = rasterio.transform.from_bounds(west, south, east, north, 256, 256)
-    destination = np.full((256, 256), np.nan, dtype="float32")
+    bounds = _tile_bounds(x, y, z)
     if dataset_id == "ndvi_change":
-        old = np.full((256, 256), np.nan, dtype="float32")
-        new = np.full((256, 256), np.nan, dtype="float32")
-        for year, target in ((2015, old), (2025, new)):
-            with rasterio.open(DATA_ROOT / FILES[f"ndvi_{year}"]) as src:
-                reproject(rasterio.band(src, 1), target, src_transform=src.transform, src_crs=src.crs,
-                          dst_transform=dst_transform, dst_crs="EPSG:4326", resampling=Resampling.bilinear,
-                          dst_nodata=np.nan)
+        old = _read_tile(DATA_ROOT / FILES["ndvi_2015"], bounds)
+        new = _read_tile(DATA_ROOT / FILES["ndvi_2025"], bounds)
         source_valid = np.isfinite(old) & np.isfinite(new) & (old >= -1) & (old <= 1) & (new >= -1) & (new <= 1)
         destination = np.where(source_valid, new - old, np.nan)
     else:
-        with rasterio.open(DATA_ROOT / filename) as src:
-            reproject(rasterio.band(src, 1), destination, src_transform=src.transform, src_crs=src.crs,
-                      dst_transform=dst_transform, dst_crs="EPSG:4326", resampling=Resampling.bilinear,
-                      dst_nodata=np.nan)
+        destination = _read_tile(DATA_ROOT / filename, bounds)
     valid = np.isfinite(destination)
     if dataset_id != "ndvi_change":
         valid &= (destination >= -1) & (destination <= 1)
     rgba = np.zeros((256, 256, 4), dtype=np.uint8)
     if valid.any():
         low, high = (-0.5, 0.5) if dataset_id == "ndvi_change" else (-1.0, 1.0)
-        scaled = np.clip((destination - low) / (high - low), 0, 1)
+        scaled = np.where(valid, np.clip((destination - low) / (high - low), 0, 1), 0)
         rgba[..., 0] = (255 * scaled).astype(np.uint8)
         rgba[..., 1] = (255 * (1 - np.abs(scaled - 0.5) * 2)).astype(np.uint8)
         rgba[..., 2] = (255 * (1 - scaled)).astype(np.uint8)

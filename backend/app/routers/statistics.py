@@ -1,4 +1,5 @@
 from pathlib import Path
+import threading
 
 import numpy as np
 import rasterio
@@ -12,6 +13,8 @@ from .datasets import _get_dataset
 
 router = APIRouter(tags=["statistics"])
 DATA_ROOT = Path(settings.SOURCE_DATA_DIR)
+CHANGE_VALUES_LOCK = threading.Lock()
+CHANGE_VALUES_CACHE = None
 
 STATS_SQL = text("""
     SELECT rs.*
@@ -35,24 +38,31 @@ def _annual_stats(dataset_id: str):
 
 
 def _change_values():
-    with rasterio.open(DATA_ROOT / "HCM_NDVI_2015.tif") as old_src, rasterio.open(DATA_ROOT / "HCM_NDVI_2025.tif") as new_src:
-        # A bounded sample keeps change analytics within the memory available on
-        # small web instances while preserving the distribution shown in charts.
-        sample_height = min(1024, old_src.height, new_src.height)
-        sample_width = min(1024, old_src.width, new_src.width)
-        output_shape = (sample_height, sample_width)
-        old = old_src.read(
-            1, masked=True, out_shape=output_shape, resampling=Resampling.bilinear
-        ).astype("float32")
-        new = new_src.read(
-            1, masked=True, out_shape=output_shape, resampling=Resampling.bilinear
-        ).astype("float32")
-    invalid = (old < -1) | (old > 1) | (new < -1) | (new > 1)
-    values = np.ma.masked_where(invalid, new - old).compressed()
-    values = values[np.isfinite(values)]
-    if not values.size:
-        raise HTTPException(status_code=404, detail="Raster biến động không có pixel hợp lệ")
-    return values
+    global CHANGE_VALUES_CACHE
+    if CHANGE_VALUES_CACHE is not None:
+        return CHANGE_VALUES_CACHE
+    with CHANGE_VALUES_LOCK:
+        if CHANGE_VALUES_CACHE is not None:
+            return CHANGE_VALUES_CACHE
+        with rasterio.open(DATA_ROOT / "HCM_NDVI_2015.tif") as old_src, rasterio.open(DATA_ROOT / "HCM_NDVI_2025.tif") as new_src:
+            # A bounded sample keeps change analytics within the memory available on
+            # small web instances while preserving the distribution shown in charts.
+            sample_height = min(1024, old_src.height, new_src.height)
+            sample_width = min(1024, old_src.width, new_src.width)
+            output_shape = (sample_height, sample_width)
+            old = old_src.read(
+                1, masked=True, out_shape=output_shape, resampling=Resampling.bilinear
+            ).astype("float32")
+            new = new_src.read(
+                1, masked=True, out_shape=output_shape, resampling=Resampling.bilinear
+            ).astype("float32")
+        invalid = (old < -1) | (old > 1) | (new < -1) | (new > 1)
+        values = np.ma.masked_where(invalid, new - old).compressed()
+        values = values[np.isfinite(values)]
+        if not values.size:
+            raise HTTPException(status_code=404, detail="Raster biến động không có pixel hợp lệ")
+        CHANGE_VALUES_CACHE = values
+        return CHANGE_VALUES_CACHE
 
 
 def _summary(values):
