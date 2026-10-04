@@ -2,6 +2,7 @@ from pathlib import Path
 import math
 
 import rasterio
+from rasterio.windows import Window
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
 
@@ -102,7 +103,7 @@ def _read_pixel(path: Path, lat: float, lng: float):
         row, col = src.index(lng, lat)
         if row < 0 or col < 0 or row >= src.height or col >= src.width:
             raise IndexError
-        value = float(src.read(1)[row, col])
+        value = float(src.read(1, window=Window(col, row, 1, 1))[0, 0])
         return value if math.isfinite(value) and -1 <= value <= 1 else None
 
 

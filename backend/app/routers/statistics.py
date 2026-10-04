@@ -3,6 +3,7 @@ from pathlib import Path
 import numpy as np
 import rasterio
 from fastapi import APIRouter, HTTPException, Query
+from rasterio.enums import Resampling
 from sqlalchemy import text
 
 from app.config import settings
@@ -35,8 +36,17 @@ def _annual_stats(dataset_id: str):
 
 def _change_values():
     with rasterio.open(DATA_ROOT / "HCM_NDVI_2015.tif") as old_src, rasterio.open(DATA_ROOT / "HCM_NDVI_2025.tif") as new_src:
-        old = old_src.read(1, masked=True).astype("float64")
-        new = new_src.read(1, masked=True).astype("float64")
+        # A bounded sample keeps change analytics within the memory available on
+        # small web instances while preserving the distribution shown in charts.
+        sample_height = min(1024, old_src.height, new_src.height)
+        sample_width = min(1024, old_src.width, new_src.width)
+        output_shape = (sample_height, sample_width)
+        old = old_src.read(
+            1, masked=True, out_shape=output_shape, resampling=Resampling.bilinear
+        ).astype("float32")
+        new = new_src.read(
+            1, masked=True, out_shape=output_shape, resampling=Resampling.bilinear
+        ).astype("float32")
     invalid = (old < -1) | (old > 1) | (new < -1) | (new > 1)
     values = np.ma.masked_where(invalid, new - old).compressed()
     values = values[np.isfinite(values)]

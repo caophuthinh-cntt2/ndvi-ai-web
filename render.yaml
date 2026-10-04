@@ -3,8 +3,8 @@ services:
     name: ndvi-ai-tphcm
     runtime: python
     plan: free
-    buildCommand: pip install -r backend/requirements.txt && python scripts/bootstrap_data.py && cd frontend && npm ci && npm run build
-    startCommand: python scripts/setup_database.py && python scripts/ingest_rasters.py && cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    buildCommand: pip install -r backend/requirements.txt && python scripts/bootstrap_data.py && python scripts/setup_database.py && python scripts/ingest_rasters.py && cd frontend && npm ci && npm run build
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
     envVars:
       - key: PYTHON_VERSION

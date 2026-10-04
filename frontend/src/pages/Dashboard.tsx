@@ -70,7 +70,7 @@ export const Dashboard: React.FC = () => {
               Sử dụng dữ liệu vệ tinh Landsat 8/9 từ năm 2015-2025. Các mô hình học máy được đánh giá bằng walk-forward validation; Random Forest được chọn cho dự báo cuối cùng.
             </p>
             <ul className="list-disc list-inside space-y-2 text-sm">
-              <li>Raster quan sát: 2015 và 2025</li>
+              <li>Raster quan sát: đầy đủ từ năm 2015 đến 2025</li>
               <li>Độ phân giải không gian: 30m x 30m</li>
               <li>Phạm vi: Toàn bộ địa bàn TP.HCM</li>
               <li>Mô hình tham chiếu: Random Forest (R² = 0.221)</li>

@@ -1,6 +1,7 @@
 from pathlib import Path
 import io
 import math
+import threading
 import numpy as np
 import rasterio
 from PIL import Image
@@ -13,6 +14,7 @@ router = APIRouter(tags=["tiles"])
 DATA_ROOT = Path(settings.SOURCE_DATA_DIR)
 FILES = {f"ndvi_{year}": f"HCM_NDVI_{year}.tif" for year in range(2015, 2026)}
 FILES["ndvi_change"] = "HCM_NDVI_Change_2015_2025.tif"
+TILE_SEMAPHORE = threading.BoundedSemaphore(2)
 
 def _tile_bounds(x: int, y: int, z: int):
     n = 2 ** z
@@ -21,8 +23,7 @@ def _tile_bounds(x: int, y: int, z: int):
     south = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * (y + 1) / n))))
     return west, south, east, north
 
-@router.get("/tiles/{dataset_id}/{z}/{x}/{y}.png")
-def tile(dataset_id: str, z: int, x: int, y: int):
+def _render_tile(dataset_id: str, z: int, x: int, y: int):
     filename = FILES.get(dataset_id)
     if filename is None:
         raise HTTPException(status_code=404, detail="Dataset không tồn tại")
@@ -58,3 +59,9 @@ def tile(dataset_id: str, z: int, x: int, y: int):
     buffer = io.BytesIO()
     Image.fromarray(rgba, "RGBA").save(buffer, format="PNG", optimize=True)
     return Response(content=buffer.getvalue(), media_type="image/png", headers={"Cache-Control": "public, max-age=3600"})
+
+
+@router.get("/tiles/{dataset_id}/{z}/{x}/{y}.png")
+def tile(dataset_id: str, z: int, x: int, y: int):
+    with TILE_SEMAPHORE, rasterio.Env(GDAL_CACHEMAX=16, GDAL_NUM_THREADS="1"):
+        return _render_tile(dataset_id, z, x, y)
