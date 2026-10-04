@@ -77,7 +77,7 @@ def setup_database():
             print(f"✗ Schema file not found: {schema_path}")
             sys.exit(1)
         
-        with open(schema_path, 'r', encoding='utf-8') as f:
+        with open(schema_path, 'r', encoding='utf-8-sig') as f:
             schema_sql = f.read()
         
         cursor.execute(schema_sql)

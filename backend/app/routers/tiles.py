@@ -7,9 +7,10 @@ from PIL import Image
 from rasterio.enums import Resampling
 from rasterio.warp import reproject
 from fastapi import APIRouter, HTTPException, Response
+from app.config import settings
 
 router = APIRouter(tags=["tiles"])
-DATA_ROOT = Path("D:/NDVI")
+DATA_ROOT = Path(settings.SOURCE_DATA_DIR)
 FILES = {f"ndvi_{year}": f"HCM_NDVI_{year}.tif" for year in range(2015, 2026)}
 FILES["ndvi_change"] = "HCM_NDVI_Change_2015_2025.tif"
 
@@ -36,13 +37,16 @@ def tile(dataset_id: str, z: int, x: int, y: int):
                 reproject(rasterio.band(src, 1), target, src_transform=src.transform, src_crs=src.crs,
                           dst_transform=dst_transform, dst_crs="EPSG:4326", resampling=Resampling.bilinear,
                           dst_nodata=np.nan)
-        destination = np.where(np.isfinite(old) & np.isfinite(new), new - old, np.nan)
+        source_valid = np.isfinite(old) & np.isfinite(new) & (old >= -1) & (old <= 1) & (new >= -1) & (new <= 1)
+        destination = np.where(source_valid, new - old, np.nan)
     else:
         with rasterio.open(DATA_ROOT / filename) as src:
             reproject(rasterio.band(src, 1), destination, src_transform=src.transform, src_crs=src.crs,
                       dst_transform=dst_transform, dst_crs="EPSG:4326", resampling=Resampling.bilinear,
                       dst_nodata=np.nan)
     valid = np.isfinite(destination)
+    if dataset_id != "ndvi_change":
+        valid &= (destination >= -1) & (destination <= 1)
     rgba = np.zeros((256, 256, 4), dtype=np.uint8)
     if valid.any():
         low, high = (-0.5, 0.5) if dataset_id == "ndvi_change" else (-1.0, 1.0)

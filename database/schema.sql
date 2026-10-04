@@ -5,25 +5,20 @@
 CREATE EXTENSION IF NOT EXISTS postgis;
 
 -- Create ENUM types
-CREATE TYPE dataset_type_enum AS ENUM (
-    'NDVI_OBSERVED',
-    'NDVI_CHANGE',
-    'NDVI_FORECAST'
-);
+DO $$ BEGIN
+    CREATE TYPE dataset_type_enum AS ENUM ('NDVI_OBSERVED', 'NDVI_CHANGE', 'NDVI_FORECAST');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE source_type_enum AS ENUM (
-    'OBSERVED',
-    'FORECAST'
-);
+DO $$ BEGIN
+    CREATE TYPE source_type_enum AS ENUM ('OBSERVED', 'FORECAST');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE model_type_enum AS ENUM (
-    'RANDOM_FOREST',
-    'EXTRA_TREES',
-    'HIST_GRADIENT_BOOSTING',
-    'SEASONAL_NAIVE',
-    'LSTM',
-    'OTHER'
-);
+DO $$ BEGIN
+    CREATE TYPE model_type_enum AS ENUM ('RANDOM_FOREST', 'EXTRA_TREES', 'HIST_GRADIENT_BOOSTING', 'SEASONAL_NAIVE', 'LSTM', 'OTHER');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- Table: study_areas
 CREATE TABLE IF NOT EXISTS study_areas (
@@ -72,6 +67,8 @@ CREATE TABLE IF NOT EXISTS raster_statistics (
     max_value DOUBLE PRECISION,
     mean_value DOUBLE PRECISION,
     median_value DOUBLE PRECISION,
+    q1_value DOUBLE PRECISION,
+    q3_value DOUBLE PRECISION,
     std_dev DOUBLE PRECISION,
     valid_pixel_count BIGINT,
     total_pixel_count BIGINT,
@@ -151,21 +148,27 @@ CREATE INDEX idx_forecast_results_year_month ON forecast_results(year, month);
 CREATE UNIQUE INDEX idx_forecast_results_unique ON forecast_results(model_run_id, forecast_date);
 
 -- Create updated_at trigger function
+ALTER TABLE raster_statistics ADD COLUMN IF NOT EXISTS q1_value DOUBLE PRECISION;
+ALTER TABLE raster_statistics ADD COLUMN IF NOT EXISTS q3_value DOUBLE PRECISION;
+
 CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS \$\$
+RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = CURRENT_TIMESTAMP;
     RETURN NEW;
 END;
-\$\$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql;
 
 -- Apply triggers
+DROP TRIGGER IF EXISTS update_study_areas_updated_at ON study_areas;
 CREATE TRIGGER update_study_areas_updated_at BEFORE UPDATE ON study_areas
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_raster_datasets_updated_at ON raster_datasets;
 CREATE TRIGGER update_raster_datasets_updated_at BEFORE UPDATE ON raster_datasets
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_model_runs_updated_at ON model_runs;
 CREATE TRIGGER update_model_runs_updated_at BEFORE UPDATE ON model_runs
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 

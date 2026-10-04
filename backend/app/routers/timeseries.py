@@ -1,21 +1,32 @@
-from pathlib import Path
 import numpy as np
-import rasterio
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from sqlalchemy import text
+
+from app.database import SessionLocal
 
 router = APIRouter(tags=["timeseries"])
-DATA_ROOT = Path("D:/NDVI")
+
 
 @router.get("/timeseries")
 def timeseries():
-    data = []
-    for year in range(2015, 2026):
-        filename = f"HCM_NDVI_{year}.tif"
-        with rasterio.open(DATA_ROOT / filename) as src:
-            values = src.read(1, masked=True).compressed().astype("float64")
-        values = values[np.isfinite(values)]
-        data.append({"date": str(year), "value": float(values.mean())})
-    values = [point["value"] for point in data]
-    return {"data": data, "statistics": {"min": min(values), "max": max(values),
-            "mean": sum(values) / len(values), "median": float(np.median(values)), "std": float(np.std(values))},
-            "status": "observed_raster_annual", "source_note": "Giá trị trung bình theo năm được tính trực tiếp từ 11 raster GeoTIFF quan sát 2015–2025; chưa phải chuỗi 132 tháng."}
+    with SessionLocal() as db:
+        rows = db.execute(text("""
+            SELECT year, ndvi_mean
+            FROM ndvi_timeseries
+            WHERE source_type = 'OBSERVED'
+            ORDER BY year, month
+        """)).mappings().all()
+    if not rows:
+        raise HTTPException(status_code=503, detail="PostGIS chưa có chuỗi thời gian")
+    data = [{"date": str(row["year"]), "value": float(row["ndvi_mean"])} for row in rows]
+    values = np.array([point["value"] for point in data], dtype="float64")
+    return {
+        "data": data,
+        "statistics": {
+            "min": float(values.min()), "max": float(values.max()),
+            "mean": float(values.mean()), "median": float(np.median(values)),
+            "std": float(values.std()),
+        },
+        "status": "observed_postgis_annual",
+        "source_note": "Chuỗi năm lấy từ bảng ndvi_timeseries trong PostGIS; giá trị được tính từ 11 GeoTIFF ngoài database.",
+    }

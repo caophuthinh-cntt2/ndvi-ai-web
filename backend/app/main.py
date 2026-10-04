@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
+from app.database import check_db_connection
 from app.routers import datasets, forecast, statistics, tiles, timeseries
 
 app = FastAPI(title="NDVI AI Backend", description="API phan tich va du bao NDVI TP.HCM", version="1.0.0")
@@ -24,4 +25,10 @@ async def root():
 @app.get("/health")
 @app.get("/api/health")
 async def health_check():
-    return {"status": "healthy", "service": "ndvi-ai-backend", "database": "filesystem-mode"}
+    database_ok = check_db_connection()
+    return {
+        "status": "healthy" if database_ok else "degraded",
+        "service": "ndvi-ai-backend",
+        "database": "postgis-connected" if database_ok else "postgis-unavailable",
+        "raster_storage": "external-geotiff",
+    }
