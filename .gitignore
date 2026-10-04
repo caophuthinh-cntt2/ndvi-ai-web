@@ -1,0 +1,29 @@
+# Secrets and local configuration
+.env
+backend/.env
+frontend/.env
+
+# Python
+__pycache__/
+*.py[cod]
+backend/venv/
+.pytest_cache/
+
+# Node/Vite
+frontend/node_modules/
+frontend/dist/
+*.log
+
+# Local raster/data artifacts (keep source data outside GitHub)
+*.tif
+*.tiff
+*.zip
+_ndvi_incoming/
+data/cache/
+data/processed/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
