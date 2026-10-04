@@ -19,6 +19,9 @@ SOURCE_DATA_DIR = Path(os.getenv("SOURCE_DATA_DIR", "D:/NDVI"))
 
 
 def connection():
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        return psycopg2.connect(database_url)
     return psycopg2.connect(
         host=os.getenv("POSTGRES_HOST", "localhost"),
         port=os.getenv("POSTGRES_PORT", "5432"),

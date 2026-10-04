@@ -23,51 +23,53 @@ def setup_database():
     db_user = os.getenv('POSTGRES_USER', 'postgres')
     db_password = os.getenv('POSTGRES_PASSWORD', 'postgres')
     db_name = os.getenv('POSTGRES_DB', 'ndvi_ai')
+    database_url = os.getenv('DATABASE_URL')
     
     print("="*60)
     print("NDVI AI WebGIS - Database Setup")
     print("="*60)
     
     try:
-        # Step 1: Connect to default postgres database
-        print(f"\n[1/4] Connecting to PostgreSQL at {db_host}:{db_port}...")
-        conn = psycopg2.connect(
-            host=db_host,
-            port=db_port,
-            database='postgres',
-            user=db_user,
-            password=db_password
-        )
-        conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
-        cursor = conn.cursor()
-        
-        # Step 2: Create database if not exists
-        print(f"[2/4] Checking database '{db_name}'...")
-        cursor.execute(f"SELECT 1 FROM pg_database WHERE datname = '{db_name}'")
-        
-        if not cursor.fetchone():
-            cursor.execute(f'CREATE DATABASE {db_name}')
-            print(f"✓ Database '{db_name}' created successfully")
+        if database_url:
+            print("\n[1/4] Connecting with DATABASE_URL...")
+            conn = psycopg2.connect(database_url)
+            print(f"[2/4] Using provisioned database '{db_name}'")
         else:
-            print(f"✓ Database '{db_name}' already exists")
-        
-        cursor.close()
-        conn.close()
-        
+            # Local setup can create the target database when it does not exist.
+            print(f"\n[1/4] Connecting to PostgreSQL at {db_host}:{db_port}...")
+            conn = psycopg2.connect(
+                host=db_host,
+                port=db_port,
+                database='postgres',
+                user=db_user,
+                password=db_password
+            )
+            conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+            cursor = conn.cursor()
+            print(f"[2/4] Checking database '{db_name}'...")
+            cursor.execute("SELECT 1 FROM pg_database WHERE datname = %s", (db_name,))
+            if not cursor.fetchone():
+                cursor.execute(f'CREATE DATABASE "{db_name}"')
+                print(f"OK Database '{db_name}' created successfully")
+            else:
+                print(f"OK Database '{db_name}' already exists")
+            cursor.close()
+            conn.close()
+            conn = psycopg2.connect(
+                host=db_host,
+                port=db_port,
+                database=db_name,
+                user=db_user,
+                password=db_password
+            )
+
         # Step 3: Connect to target database and enable PostGIS
         print(f"[3/4] Enabling PostGIS extension...")
-        conn = psycopg2.connect(
-            host=db_host,
-            port=db_port,
-            database=db_name,
-            user=db_user,
-            password=db_password
-        )
         cursor = conn.cursor()
         
         cursor.execute("CREATE EXTENSION IF NOT EXISTS postgis")
         conn.commit()
-        print("✓ PostGIS extension enabled")
+        print("OK PostGIS extension enabled")
         
         # Step 4: Execute schema
         print(f"[4/4] Creating database schema...")
@@ -82,7 +84,7 @@ def setup_database():
         
         cursor.execute(schema_sql)
         conn.commit()
-        print("✓ Database schema created successfully")
+        print("OK Database schema created successfully")
         
         # Verify tables
         cursor.execute("""
@@ -92,7 +94,7 @@ def setup_database():
         """)
         tables = cursor.fetchall()
         
-        print(f"\n✓ Created {len(tables)} tables:")
+        print(f"\nOK Created {len(tables)} tables:")
         for table in tables:
             print(f"  - {table[0]}")
         
@@ -100,15 +102,15 @@ def setup_database():
         conn.close()
         
         print("\n" + "="*60)
-        print("✓ Database setup completed successfully!")
+        print("OK Database setup completed successfully!")
         print("="*60)
         print(f"\nConnection string: postgresql://{db_user}@{db_host}:{db_port}/{db_name}")
         
     except psycopg2.Error as e:
-        print(f"\n✗ Database error: {e}")
+        print(f"\nDatabase error: {e}")
         sys.exit(1)
     except Exception as e:
-        print(f"\n✗ Error: {e}")
+        print(f"\nError: {e}")
         sys.exit(1)
 
 if __name__ == '__main__':
