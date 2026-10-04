@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: ndvi-ai-tphcm
+    runtime: python
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt && python scripts/bootstrap_data.py && cd frontend && npm ci && npm run build
+    startCommand: python scripts/setup_database.py && python scripts/ingest_rasters.py && cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: SOURCE_DATA_DIR
+        value: /opt/render/project/src/data/runtime
+      - key: CORS_ORIGINS
+        value: https://ndvi-ai-tphcm.onrender.com
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ndvi-ai-db
+          property: connectionString
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: ndvi-ai-db
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: ndvi-ai-db
+          property: port
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: ndvi-ai-db
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: ndvi-ai-db
+          property: password
+      - key: POSTGRES_DB
+        fromDatabase:
+          name: ndvi-ai-db
+          property: database
+
+databases:
+  - name: ndvi-ai-db
+    databaseName: ndvi_ai
+    user: ndvi_ai
+    plan: free

@@ -3,9 +3,10 @@ import csv
 import zipfile
 
 from fastapi import APIRouter, HTTPException, Response
+from app.config import settings
 
 router = APIRouter(tags=["forecast"])
-ZIP_PATH = Path("D:/NDVI/HCM_NDVI_Forecast_Maps_2026.zip")
+ZIP_PATH = Path(settings.SOURCE_DATA_DIR) / "HCM_NDVI_Forecast_Maps_2026.zip"
 
 def _forecast_rows():
     if not ZIP_PATH.exists():

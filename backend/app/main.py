@@ -1,4 +1,7 @@
-from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import check_db_connection
@@ -18,8 +21,8 @@ app.include_router(statistics.router, prefix="/api")
 app.include_router(tiles.router, prefix="/api")
 app.include_router(timeseries.router, prefix="/api")
 
-@app.get("/")
-async def root():
+@app.get("/api")
+async def api_root():
     return {"message": "NDVI AI Backend API", "version": "1.0.0"}
 
 @app.get("/health")
@@ -32,3 +35,15 @@ async def health_check():
         "database": "postgis-connected" if database_ok else "postgis-unavailable",
         "raster_storage": "external-geotiff",
     }
+
+
+FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_frontend(full_path: str):
+    if not FRONTEND_DIST.exists():
+        raise HTTPException(status_code=404, detail="Frontend build chưa tồn tại")
+    requested = (FRONTEND_DIST / full_path).resolve()
+    if requested.is_file() and FRONTEND_DIST.resolve() in requested.parents:
+        return FileResponse(requested)
+    return FileResponse(FRONTEND_DIST / "index.html")
