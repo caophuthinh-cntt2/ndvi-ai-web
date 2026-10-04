@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS study_areas (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_study_areas_geom ON study_areas USING GIST(geom);
+CREATE INDEX IF NOT EXISTS idx_study_areas_geom ON study_areas USING GIST(geom);
 
 -- Table: raster_datasets
 CREATE TABLE IF NOT EXISTS raster_datasets (
@@ -54,10 +54,10 @@ CREATE TABLE IF NOT EXISTS raster_datasets (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_raster_datasets_type ON raster_datasets(dataset_type);
-CREATE INDEX idx_raster_datasets_year ON raster_datasets(year);
-CREATE INDEX idx_raster_datasets_date ON raster_datasets(observation_date);
-CREATE INDEX idx_raster_datasets_bounds ON raster_datasets USING GIST(bounds);
+CREATE INDEX IF NOT EXISTS idx_raster_datasets_type ON raster_datasets(dataset_type);
+CREATE INDEX IF NOT EXISTS idx_raster_datasets_year ON raster_datasets(year);
+CREATE INDEX IF NOT EXISTS idx_raster_datasets_date ON raster_datasets(observation_date);
+CREATE INDEX IF NOT EXISTS idx_raster_datasets_bounds ON raster_datasets USING GIST(bounds);
 
 -- Table: raster_statistics
 CREATE TABLE IF NOT EXISTS raster_statistics (
@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS raster_statistics (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE UNIQUE INDEX idx_raster_statistics_dataset ON raster_statistics(dataset_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_raster_statistics_dataset ON raster_statistics(dataset_id);
 
 -- Table: ndvi_timeseries
 CREATE TABLE IF NOT EXISTS ndvi_timeseries (
@@ -100,10 +100,10 @@ CREATE TABLE IF NOT EXISTS ndvi_timeseries (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_ndvi_timeseries_date ON ndvi_timeseries(observation_date);
-CREATE INDEX idx_ndvi_timeseries_year_month ON ndvi_timeseries(year, month);
-CREATE INDEX idx_ndvi_timeseries_source ON ndvi_timeseries(source_type);
-CREATE UNIQUE INDEX idx_ndvi_timeseries_unique ON ndvi_timeseries(observation_date, source_type);
+CREATE INDEX IF NOT EXISTS idx_ndvi_timeseries_date ON ndvi_timeseries(observation_date);
+CREATE INDEX IF NOT EXISTS idx_ndvi_timeseries_year_month ON ndvi_timeseries(year, month);
+CREATE INDEX IF NOT EXISTS idx_ndvi_timeseries_source ON ndvi_timeseries(source_type);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ndvi_timeseries_unique ON ndvi_timeseries(observation_date, source_type);
 
 -- Table: model_runs
 CREATE TABLE IF NOT EXISTS model_runs (
@@ -125,8 +125,8 @@ CREATE TABLE IF NOT EXISTS model_runs (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_model_runs_type ON model_runs(model_type);
-CREATE INDEX idx_model_runs_selected ON model_runs(is_selected);
+CREATE INDEX IF NOT EXISTS idx_model_runs_type ON model_runs(model_type);
+CREATE INDEX IF NOT EXISTS idx_model_runs_selected ON model_runs(is_selected);
 
 -- Table: forecast_results
 CREATE TABLE IF NOT EXISTS forecast_results (
@@ -142,10 +142,10 @@ CREATE TABLE IF NOT EXISTS forecast_results (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_forecast_results_model ON forecast_results(model_run_id);
-CREATE INDEX idx_forecast_results_date ON forecast_results(forecast_date);
-CREATE INDEX idx_forecast_results_year_month ON forecast_results(year, month);
-CREATE UNIQUE INDEX idx_forecast_results_unique ON forecast_results(model_run_id, forecast_date);
+CREATE INDEX IF NOT EXISTS idx_forecast_results_model ON forecast_results(model_run_id);
+CREATE INDEX IF NOT EXISTS idx_forecast_results_date ON forecast_results(forecast_date);
+CREATE INDEX IF NOT EXISTS idx_forecast_results_year_month ON forecast_results(year, month);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_forecast_results_unique ON forecast_results(model_run_id, forecast_date);
 
 -- Create updated_at trigger function
 ALTER TABLE raster_statistics ADD COLUMN IF NOT EXISTS q1_value DOUBLE PRECISION;
