@@ -1,29 +1,21 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { Card } from '../components/common/Card';
-import { Loading } from '../components/common/Loading';
 import { ForecastChart } from '../components/charts/ForecastChart';
 import { api } from '../api/client';
 import type { ForecastResult } from '../types';
 
 export const Dashboard: React.FC = () => {
   const [forecast, setForecast] = useState<ForecastResult | null>(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const forecastData = await api.getForecast2026();
-        setForecast(forecastData);
-      } catch (error) {
-        console.error('Error loading dashboard data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
+    let active = true;
+    api.getForecast2026()
+      .then((forecastData) => {
+        if (active) setForecast(forecastData);
+      })
+      .catch((error) => console.error('Error loading dashboard data:', error));
+    return () => { active = false; };
   }, []);
-
-  if (loading) return <Loading />;
 
   const stats = [
     { label: 'Giai đoạn', value: '2015-2026', icon: '📅' },
