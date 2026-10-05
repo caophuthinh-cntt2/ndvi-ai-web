@@ -93,11 +93,11 @@ def upsert_year(conn, year: int):
         cursor.execute(
             """
             INSERT INTO raster_datasets (
-                name, dataset_type, observation_date, year, file_path, cog_path,
+                name, dataset_type, indicator_type, observation_date, year, file_path, cog_path,
                 crs, width, height, resolution_x, resolution_y, bounds,
                 nodata_value, dtype, metadata_json
             ) VALUES (
-                %s, 'NDVI_OBSERVED', %s, %s, %s, NULL, %s, %s, %s, %s, %s,
+                %s, 'NDVI_OBSERVED', 'NDVI', %s, %s, %s, NULL, %s, %s, %s, %s, %s,
                 ST_MakeEnvelope(%s, %s, %s, %s, 4326), %s, %s, %s
             )
             ON CONFLICT (name) DO UPDATE SET
@@ -178,6 +178,35 @@ def upsert_year(conn, year: int):
                 "Giá trị năm tính từ GeoTIFF; pixel raster lưu ngoài PostGIS.",
             ),
         )
+        cursor.execute(
+            """
+            INSERT INTO indicator_timeseries (
+                indicator_type, observation_date, year, month, mean_value,
+                median_value, std_value, min_value, max_value, source_type,
+                dataset_id, unit, notes
+            ) VALUES (
+                'NDVI', %s, %s, 12, %s, %s, %s, %s, %s,
+                'OBSERVED', %s, 'dimensionless', %s
+            )
+            ON CONFLICT (indicator_type, observation_date, source_type) DO UPDATE SET
+                year = EXCLUDED.year,
+                month = EXCLUDED.month,
+                mean_value = EXCLUDED.mean_value,
+                median_value = EXCLUDED.median_value,
+                std_value = EXCLUDED.std_value,
+                min_value = EXCLUDED.min_value,
+                max_value = EXCLUDED.max_value,
+                dataset_id = EXCLUDED.dataset_id,
+                unit = EXCLUDED.unit,
+                notes = EXCLUDED.notes,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                date(year, 12, 31), year, stats["mean_value"], stats["median_value"],
+                stats["std_dev"], stats["min_value"], stats["max_value"], dataset_id,
+                "Annual value calculated from the source GeoTIFF.",
+            ),
+        )
     conn.commit()
     print(f"OK {year}: dataset_id={dataset_id}, mean={stats['mean_value']:.6f}")
 
@@ -186,7 +215,7 @@ def main():
     with connection() as conn:
         for year in range(2015, 2026):
             upsert_year(conn, year)
-    print("Đã đăng ký 11 raster và thống kê vào PostGIS.")
+    print("Registered 11 rasters and statistics in PostGIS.")
 
 
 if __name__ == "__main__":

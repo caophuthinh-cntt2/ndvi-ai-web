@@ -10,6 +10,17 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
+-- Keep the raster catalog extensible for all three environmental indices.
+ALTER TYPE dataset_type_enum ADD VALUE IF NOT EXISTS 'LST_OBSERVED';
+ALTER TYPE dataset_type_enum ADD VALUE IF NOT EXISTS 'LST_FORECAST';
+ALTER TYPE dataset_type_enum ADD VALUE IF NOT EXISTS 'TVDI_OBSERVED';
+ALTER TYPE dataset_type_enum ADD VALUE IF NOT EXISTS 'TVDI_FORECAST';
+
+DO $$ BEGIN
+    CREATE TYPE indicator_type_enum AS ENUM ('NDVI', 'LST', 'TVDI');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
 DO $$ BEGIN
     CREATE TYPE source_type_enum AS ENUM ('OBSERVED', 'FORECAST');
 EXCEPTION WHEN duplicate_object THEN NULL;
@@ -31,6 +42,36 @@ CREATE TABLE IF NOT EXISTS study_areas (
 );
 
 CREATE INDEX IF NOT EXISTS idx_study_areas_geom ON study_areas USING GIST(geom);
+
+-- Table: indicator_definitions
+-- This catalog declares the supported indices without inventing observations.
+CREATE TABLE IF NOT EXISTS indicator_definitions (
+    indicator_type indicator_type_enum PRIMARY KEY,
+    full_name VARCHAR(255) NOT NULL,
+    default_unit VARCHAR(50),
+    expected_min DOUBLE PRECISION,
+    expected_max DOUBLE PRECISION,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO indicator_definitions (
+    indicator_type, full_name, default_unit, expected_min, expected_max, description
+) VALUES
+    ('NDVI', 'Normalized Difference Vegetation Index', 'dimensionless', -1, 1,
+     'Chỉ số thực vật chuẩn hóa dùng để đánh giá mức độ xanh của thảm thực vật.'),
+    ('LST', 'Land Surface Temperature', '°C', NULL, NULL,
+     'Nhiệt độ bề mặt đất; đơn vị thực tế phải được xác nhận khi nạp dữ liệu nguồn.'),
+    ('TVDI', 'Temperature Vegetation Dryness Index', 'dimensionless', 0, 1,
+     'Chỉ số khô hạn kết hợp thông tin nhiệt độ bề mặt và trạng thái thực vật.')
+ON CONFLICT (indicator_type) DO UPDATE SET
+    full_name = EXCLUDED.full_name,
+    default_unit = EXCLUDED.default_unit,
+    expected_min = EXCLUDED.expected_min,
+    expected_max = EXCLUDED.expected_max,
+    description = EXCLUDED.description,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- Table: raster_datasets
 CREATE TABLE IF NOT EXISTS raster_datasets (
@@ -54,7 +95,11 @@ CREATE TABLE IF NOT EXISTS raster_datasets (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+ALTER TABLE raster_datasets
+    ADD COLUMN IF NOT EXISTS indicator_type indicator_type_enum NOT NULL DEFAULT 'NDVI';
+
 CREATE INDEX IF NOT EXISTS idx_raster_datasets_type ON raster_datasets(dataset_type);
+CREATE INDEX IF NOT EXISTS idx_raster_datasets_indicator ON raster_datasets(indicator_type);
 CREATE INDEX IF NOT EXISTS idx_raster_datasets_year ON raster_datasets(year);
 CREATE INDEX IF NOT EXISTS idx_raster_datasets_date ON raster_datasets(observation_date);
 CREATE INDEX IF NOT EXISTS idx_raster_datasets_bounds ON raster_datasets USING GIST(bounds);
@@ -104,6 +149,62 @@ CREATE INDEX IF NOT EXISTS idx_ndvi_timeseries_date ON ndvi_timeseries(observati
 CREATE INDEX IF NOT EXISTS idx_ndvi_timeseries_year_month ON ndvi_timeseries(year, month);
 CREATE INDEX IF NOT EXISTS idx_ndvi_timeseries_source ON ndvi_timeseries(source_type);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ndvi_timeseries_unique ON ndvi_timeseries(observation_date, source_type);
+
+-- Table: indicator_timeseries
+-- Shared observations/forecasts for NDVI, LST and TVDI. LST/TVDI rows are
+-- intentionally added only when real source data is available.
+CREATE TABLE IF NOT EXISTS indicator_timeseries (
+    id SERIAL PRIMARY KEY,
+    indicator_type indicator_type_enum NOT NULL
+        REFERENCES indicator_definitions(indicator_type),
+    observation_date DATE NOT NULL,
+    year INTEGER NOT NULL,
+    month INTEGER NOT NULL CHECK (month BETWEEN 1 AND 12),
+    mean_value DOUBLE PRECISION NOT NULL,
+    median_value DOUBLE PRECISION,
+    std_value DOUBLE PRECISION,
+    min_value DOUBLE PRECISION,
+    max_value DOUBLE PRECISION,
+    source_type source_type_enum NOT NULL DEFAULT 'OBSERVED',
+    dataset_id INTEGER REFERENCES raster_datasets(id) ON DELETE SET NULL,
+    unit VARCHAR(50),
+    quality_metadata JSONB,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (indicator_type, observation_date, source_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_indicator_timeseries_type
+    ON indicator_timeseries(indicator_type);
+CREATE INDEX IF NOT EXISTS idx_indicator_timeseries_date
+    ON indicator_timeseries(observation_date);
+CREATE INDEX IF NOT EXISTS idx_indicator_timeseries_year_month
+    ON indicator_timeseries(indicator_type, year, month);
+
+-- Preserve the current website while exposing existing NDVI observations
+-- through the new shared structure.
+INSERT INTO indicator_timeseries (
+    indicator_type, observation_date, year, month, mean_value, median_value,
+    std_value, min_value, max_value, source_type, dataset_id, unit, notes
+)
+SELECT
+    'NDVI', observation_date, year, month, ndvi_mean, ndvi_median,
+    ndvi_std, ndvi_min, ndvi_max, source_type, dataset_id,
+    'dimensionless', notes
+FROM ndvi_timeseries
+ON CONFLICT (indicator_type, observation_date, source_type) DO UPDATE SET
+    year = EXCLUDED.year,
+    month = EXCLUDED.month,
+    mean_value = EXCLUDED.mean_value,
+    median_value = EXCLUDED.median_value,
+    std_value = EXCLUDED.std_value,
+    min_value = EXCLUDED.min_value,
+    max_value = EXCLUDED.max_value,
+    dataset_id = EXCLUDED.dataset_id,
+    unit = EXCLUDED.unit,
+    notes = EXCLUDED.notes,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- Table: model_runs
 CREATE TABLE IF NOT EXISTS model_runs (
@@ -162,6 +263,14 @@ $$ LANGUAGE plpgsql;
 -- Apply triggers
 DROP TRIGGER IF EXISTS update_study_areas_updated_at ON study_areas;
 CREATE TRIGGER update_study_areas_updated_at BEFORE UPDATE ON study_areas
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_indicator_definitions_updated_at ON indicator_definitions;
+CREATE TRIGGER update_indicator_definitions_updated_at BEFORE UPDATE ON indicator_definitions
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_indicator_timeseries_updated_at ON indicator_timeseries;
+CREATE TRIGGER update_indicator_timeseries_updated_at BEFORE UPDATE ON indicator_timeseries
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 DROP TRIGGER IF EXISTS update_raster_datasets_updated_at ON raster_datasets;
