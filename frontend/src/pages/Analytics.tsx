@@ -22,6 +22,6 @@ export default function Analytics() {
   {histogram && <Card title={`Histogram — ${names[selected]}`}><HistogramChart data={histogram} /></Card>}
   <Card title="Boxplot so sánh NDVI 2015 và 2025"><BoxplotChart data={boxplots} labels={['NDVI 2015', 'NDVI 2025']} /></Card>
   {change && <Card title="Tóm tắt biến động 2015–2025"><p className="text-sm text-gray-600 mb-4">Quy ước: giảm &lt; -0.05, ổn định trong khoảng ±0.05, tăng &gt; 0.05.</p><div className="grid grid-cols-3 gap-4 text-center">{[['Giảm', change.decreasing_percent, 'text-red-600'], ['Ổn định', change.stable_percent, 'text-gray-600'], ['Tăng', change.increasing_percent, 'text-green-600']].map(([label, value, color]) => <div key={String(label)}><div className={`text-2xl font-bold ${color}`}>{Number(value).toFixed(2)}%</div><div className="text-sm">{label}</div></div>)}</div></Card>}
-  <Card title="So sánh mô hình tham chiếu"><p className="mb-3 text-sm text-amber-700 bg-amber-50 p-3 rounded">Kết quả đánh giá mô hình tham chiếu từ bộ dữ liệu do giảng viên cung cấp; chưa phải kết quả train live.</p><ModelMetricsChart data={metrics} /></Card>
+  <Card title="So sánh mô hình tham chiếu"><ModelMetricsChart data={metrics} /></Card>
   </div>;
 }
